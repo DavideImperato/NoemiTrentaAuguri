@@ -1,53 +1,42 @@
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+);
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
+  if (req.method !== "POST")
     return res.status(405).json({ error: "Metodo non consentito" });
-  }
 
   try {
     const { imageData, filename } = req.body;
+    if (!imageData) return res.status(400).json({ error: "Nessuna immagine ricevuta" });
 
-    if (!imageData) {
-      return res.status(400).json({ error: "Nessuna immagine ricevuta" });
-    }
-
-    const apiKey = process.env.FREEIMAGE_API_KEY || "anonymous";
-
-    // ✅ Rimuove "data:image/png;base64," se presente
     const cleanBase64 = imageData.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(cleanBase64, "base64");
 
-    // ✅ Crea il corpo della richiesta JSON come indicato nella documentazione
-    const body = {
-      key: apiKey,
-      action: "upload",
-      source: cleanBase64,
-      format: "json",
-    };
-
-    const response = await fetch("https://freeimage.host/api/1/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(body),
-    });
-
-    const data = await response.json();
-    console.log("📦 Risposta API:", data);
-
-    if (!data?.image?.url) {
-      console.error("❌ Errore risposta API:", data);
-      return res.status(400).json({
-        error: "Errore risposta API FreeImage",
-        details: data,
+    // 🔹 Salva nella cartella 'uploads/'
+    const { data, error } = await supabase.storage
+      .from("noemi30")
+      .upload(`uploads/${filename}`, buffer, {
+        contentType: "image/png",
+        upsert: true,
       });
-    }
+
+    if (error) throw error;
+
+    // 🔹 Ottieni URL pubblico o privato
+    const { data: publicUrl } = supabase.storage
+      .from("noemi30")
+      .getPublicUrl(`uploads/${filename}`);
 
     res.status(200).json({
       success: true,
-      link: data.image.url,
+      link: publicUrl.publicUrl,
     });
   } catch (error) {
     console.error("❌ Errore upload:", error);
-    res.status(500).json({ error: "Errore durante l'upload", details: error.message });
+    res.status(500).json({ error: error.message });
   }
 }
