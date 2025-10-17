@@ -193,7 +193,7 @@ export default function CameraPage() {
     }
   };
 
-  cconst uploadToGoogleDrive = async () => {
+  const uploadToGoogleDrive = async () => {
   if (!capturedPhoto) {
     toast({
       title: "Errore",
