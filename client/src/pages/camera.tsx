@@ -107,43 +107,40 @@ export default function CameraPage() {
 
   const startCamera = async () => {
   try {
-    // Ferma eventuali stream precedenti
+    // Stop eventuale stream precedente
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
     }
 
-    // Imposta i vincoli video compatibili con iOS e Android
+    // ⚡ Importantissimo su iOS: chiamare getUserMedia dentro un "user gesture"
     const constraints = {
       video: {
-        facingMode: { ideal: "user" }, // "user" = fotocamera frontale
+        facingMode: { ideal: "user" },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
       audio: false,
     };
 
-    console.log("🎥 Richiesta accesso fotocamera...", constraints);
+    console.log("🎥 Avvio fotocamera con constraints:", constraints);
+
+    // ⚠️ fix per Chrome iOS — richiesta ritardata
+    await new Promise((res) => setTimeout(res, 300));
 
     const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-    console.log("✅ Stream ottenuto:", mediaStream);
 
-    if (!videoRef.current) {
-      throw new Error("Riferimento al video mancante");
-    }
+    if (!videoRef.current) throw new Error("Elemento video mancante");
 
-    // Assegna lo stream alla sorgente video
     const videoElement = videoRef.current;
     videoElement.srcObject = mediaStream;
-
-    // Fix specifico per iOS Safari e Chrome (WebKit)
-    videoElement.setAttribute("playsinline", "true"); // evita fullscreen automatico su iPhone
+    videoElement.setAttribute("playsinline", "true");
     videoElement.setAttribute("autoplay", "true");
-    videoElement.setAttribute("muted", "true"); // richiesto da Safari mobile
+    videoElement.setAttribute("muted", "true");
     videoElement.muted = true;
 
-    // Forza l'avvio esplicito del video
+    // Forza l’avvio esplicito dello stream
     await videoElement.play().catch((err) => {
-      console.warn("⚠️ Errore durante video.play():", err);
+      console.warn("⚠️ video.play() bloccato:", err);
     });
 
     setStream(mediaStream);
@@ -151,18 +148,19 @@ export default function CameraPage() {
 
     toast({
       title: "📸 Fotocamera attiva",
-      description: "Pronta per scattare la foto!",
+      description: "Pronta per scattare!",
     });
   } catch (error: any) {
     console.error("❌ Errore accesso fotocamera:", error);
 
     let message = "Impossibile accedere alla fotocamera.";
+
     if (error.name === "NotAllowedError") {
-      message = "Permesso negato — consenti l'accesso alla fotocamera.";
-    } else if (error.name === "NotFoundError") {
-      message = "Nessuna fotocamera rilevata sul dispositivo.";
+      message = "Permesso negato — prova a ricaricare e consentire di nuovo.";
     } else if (error.name === "NotReadableError") {
-      message = "La fotocamera è già in uso da un'altra app.";
+      message = "Fotocamera già in uso da un'altra app.";
+    } else if (error.name === "NotFoundError") {
+      message = "Nessuna fotocamera rilevata.";
     }
 
     toast({
@@ -170,6 +168,9 @@ export default function CameraPage() {
       description: message,
       variant: "destructive",
     });
+
+    // disattiva stato camera
+    setIsCameraActive(false);
   }
 };
 
