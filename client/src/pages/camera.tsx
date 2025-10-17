@@ -107,29 +107,44 @@ export default function CameraPage() {
 
   const startCamera = async () => {
   try {
-    // Chiude eventuali stream precedenti
+    // Ferma eventuali stream precedenti
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
     }
 
-    // Chiede accesso alla fotocamera
-    const mediaStream = await navigator.mediaDevices.getUserMedia({
+    // Imposta i vincoli video compatibili con iOS e Android
+    const constraints = {
       video: {
-        facingMode: { ideal: "user" },
+        facingMode: { ideal: "user" }, // "user" = fotocamera frontale
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
       audio: false,
-    });
+    };
 
+    console.log("🎥 Richiesta accesso fotocamera...", constraints);
+
+    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
     console.log("✅ Stream ottenuto:", mediaStream);
 
-    if (videoRef.current) {
-      videoRef.current.srcObject = mediaStream;
-      await videoRef.current.play().catch((err) => {
-        console.error("Errore avvio video:", err);
-      });
+    if (!videoRef.current) {
+      throw new Error("Riferimento al video mancante");
     }
+
+    // Assegna lo stream alla sorgente video
+    const videoElement = videoRef.current;
+    videoElement.srcObject = mediaStream;
+
+    // Fix specifico per iOS Safari e Chrome (WebKit)
+    videoElement.setAttribute("playsinline", "true"); // evita fullscreen automatico su iPhone
+    videoElement.setAttribute("autoplay", "true");
+    videoElement.setAttribute("muted", "true"); // richiesto da Safari mobile
+    videoElement.muted = true;
+
+    // Forza l'avvio esplicito del video
+    await videoElement.play().catch((err) => {
+      console.warn("⚠️ Errore durante video.play():", err);
+    });
 
     setStream(mediaStream);
     setIsCameraActive(true);
@@ -140,12 +155,19 @@ export default function CameraPage() {
     });
   } catch (error: any) {
     console.error("❌ Errore accesso fotocamera:", error);
+
+    let message = "Impossibile accedere alla fotocamera.";
+    if (error.name === "NotAllowedError") {
+      message = "Permesso negato — consenti l'accesso alla fotocamera.";
+    } else if (error.name === "NotFoundError") {
+      message = "Nessuna fotocamera rilevata sul dispositivo.";
+    } else if (error.name === "NotReadableError") {
+      message = "La fotocamera è già in uso da un'altra app.";
+    }
+
     toast({
       title: "Errore fotocamera",
-      description:
-        error.name === "NotAllowedError"
-          ? "Permesso negato — consenti l'accesso alla fotocamera."
-          : "Impossibile accedere alla fotocamera.",
+      description: message,
       variant: "destructive",
     });
   }
