@@ -107,57 +107,45 @@ export default function CameraPage() {
 
   const startCamera = async () => {
   try {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      toast({
-        title: "Fotocamera non supportata",
-        description:
-          "Questo dispositivo o browser non supporta l'accesso alla fotocamera.",
-        variant: "destructive",
-      });
-      return;
+    // Chiude eventuali stream precedenti
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
     }
 
-    const constraints = {
+    // Chiede accesso alla fotocamera
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
       video: {
-        facingMode: { ideal: "user" }, // usa "environment" per quella posteriore
+        facingMode: { ideal: "user" },
         width: { ideal: 1280 },
         height: { ideal: 720 },
       },
       audio: false,
-    };
+    });
 
-    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    console.log("✅ Stream ottenuto:", mediaStream);
 
     if (videoRef.current) {
       videoRef.current.srcObject = mediaStream;
-
-      // 👇 nuovo fix: forza la riproduzione anche su Safari e Chrome mobile
-      const playPromise = videoRef.current.play();
-
-      if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            console.log("Video avviato correttamente");
-          })
-          .catch((err) => {
-            console.warn("Autoplay bloccato, serve click manuale:", err);
-          });
-      }
+      await videoRef.current.play().catch((err) => {
+        console.error("Errore avvio video:", err);
+      });
     }
 
     setStream(mediaStream);
     setIsCameraActive(true);
 
     toast({
-      title: "Fotocamera attiva!",
-      description: "Puoi scattare la foto appena vedi il video.",
+      title: "📸 Fotocamera attiva",
+      description: "Pronta per scattare la foto!",
     });
-  } catch (error) {
-    console.error("Errore accesso fotocamera:", error);
+  } catch (error: any) {
+    console.error("❌ Errore accesso fotocamera:", error);
     toast({
       title: "Errore fotocamera",
       description:
-        "Verifica i permessi e che il sito sia aperto in HTTPS (non dentro app come Instagram).",
+        error.name === "NotAllowedError"
+          ? "Permesso negato — consenti l'accesso alla fotocamera."
+          : "Impossibile accedere alla fotocamera.",
       variant: "destructive",
     });
   }
@@ -392,22 +380,60 @@ export default function CameraPage() {
             <Card className="overflow-hidden shadow-2xl border-2" data-testid="card-camera">
               <div className="relative bg-card">
                 {isCameraActive ? (
-  <div className="relative aspect-[3/4] bg-black overflow-hidden rounded-lg">
-    <video
-      ref={videoRef}
-      autoPlay
-      playsInline
-      muted
-      className="w-full h-full object-cover absolute inset-0 z-0"
-      data-testid="video-camera"
-    />
-    <img
-      src={frameImage}
-      alt="Cornice"
-      className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
-    />
-  </div>
-) : (
+                  <div className="relative aspect-[3/4] bg-black">
+                    <video
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted
+  onClick={() => videoRef.current?.play()} // 👈 Safari richiede un tap per partire
+  className="w-full h-full object-cover bg-black"
+  style={{ minHeight: "300px", maxHeight: "80vh", borderRadius: "8px" }}
+  data-testid="video-camera"
+/>
+
+                    <div className="absolute inset-0 pointer-events-none">
+                      <img
+                        src={frameImage}
+                        alt="Cornice"
+                        className="w-full h-full object-cover opacity-60"
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="aspect-[3/4] flex items-center justify-center bg-gradient-to-br from-secondary/20 to-accent/20">
+                    <div className="text-center space-y-4 p-8">
+                      <Camera className="w-20 h-20 mx-auto text-primary opacity-30" />
+                      <p className="text-muted-foreground">
+                        Premi il pulsante per attivare la fotocamera
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <canvas ref={canvasRef} className="hidden" />
+              </div>
+
+              <div className="p-6 space-y-4 bg-card">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  data-testid="input-file"
+                />
+                {isCameraActive ? (
+                  <Button
+                    onClick={capturePhoto}
+                    size="lg"
+                    className="w-full text-lg"
+                    data-testid="button-capture"
+                  >
+                    <Camera className="mr-2 h-5 w-5" />
+                    Scatta la Foto
+                  </Button>
+                ) : (
                   <div className="space-y-3">
                     <Button
                       onClick={startCamera}
