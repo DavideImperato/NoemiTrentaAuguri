@@ -193,34 +193,46 @@ export default function CameraPage() {
     }
   };
 
-  const uploadToGoogleDrive = async () => {
-  if (!capturedPhoto) return;
+  cconst uploadToGoogleDrive = async () => {
+  if (!capturedPhoto) {
+    toast({
+      title: "Errore",
+      description: "Nessuna foto trovata da caricare",
+      variant: "destructive",
+    });
+    return;
+  }
 
   setIsLoading(true);
+
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const fileName = `Noemi30_${timestamp}.png`;
+    const filename = `Noemi30_${timestamp}.png`;
 
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: capturedPhoto, fileName }),
+      body: JSON.stringify({
+        imageData: capturedPhoto, // base64 dell’immagine
+        filename,
+      }),
     });
 
-    if (response.ok) {
-      toast({
-        title: "✅ Foto salvata!",
-        description: "La foto è stata caricata nel Drive di Noemi 🎉",
-      });
-      setCapturedPhoto(null);
-    } else {
-      throw new Error("Errore upload");
-    }
+    if (!response.ok) throw new Error("Errore upload");
+
+    const data = await response.json();
+
+    toast({
+      title: "✅ Foto salvata su Google Drive!",
+      description: `Apri qui: ${data.link}`,
+    });
+
+    console.log("📤 Upload completato:", data);
   } catch (error) {
     console.error("Errore upload:", error);
     toast({
-      title: "Errore",
-      description: "Impossibile salvare la foto su Drive",
+      title: "Errore salvataggio",
+      description: "Impossibile salvare la foto su Google Drive",
       variant: "destructive",
     });
   } finally {

@@ -24,7 +24,13 @@ export default async function handler(req, res) {
 
     const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-    const { imageData, filename } = req.body;
+    const body = req.body || JSON.parse(await new Promise(res => {
+  let data = '';
+  req.on('data', chunk => (data += chunk));
+  req.on('end', () => res(data));
+}));
+
+const { imageData, filename } = body;
 
     if (!imageData) {
       return res.status(400).json({ error: "Nessuna immagine ricevuta" });
