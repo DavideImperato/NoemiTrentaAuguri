@@ -194,55 +194,39 @@ export default function CameraPage() {
   };
 
   const uploadToGoogleDrive = async () => {
-    if (!capturedPhoto || !originalPhoto) return;
-    if (!isSignedIn) {
-      await initializeGoogleDrive();
-      return;
-    }
+  if (!capturedPhoto) return;
 
-    setIsLoading(true);
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const filename = `Noemi30_${timestamp}_cornice.png`;
-      const blob = await fetch(capturedPhoto).then((r) => r.blob());
+  setIsLoading(true);
+  try {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const fileName = `Noemi30_${timestamp}.png`;
 
-      const metadata = { name: filename, mimeType: "image/png",parents: ["1p0ygPJDf6UC7sJg1Rok9xxvbAJ0d0STU"] };
-      const form = new FormData();
-      form.append(
-        "metadata",
-        new Blob([JSON.stringify(metadata)], { type: "application/json" })
-      );
-      form.append("file", blob);
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: capturedPhoto, fileName }),
+    });
 
-      const uploadUrl =
-        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
-      const token = window.gapi.client.getToken().access_token;
-
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: form,
-      });
-
-      if (res.ok) {
-        toast({
-          title: "🎉 Foto salvata su Google Drive!",
-          description: filename,
-        });
-        setCapturedPhoto(null);
-        setOriginalPhoto(null);
-      } else throw new Error("Upload fallito");
-    } catch (err) {
-      console.error(err);
+    if (response.ok) {
       toast({
-        title: "Errore salvataggio",
-        description: "Non è stato possibile caricare su Drive",
-        variant: "destructive",
+        title: "✅ Foto salvata!",
+        description: "La foto è stata caricata nel Drive di Noemi 🎉",
       });
-    } finally {
-      setIsLoading(false);
+      setCapturedPhoto(null);
+    } else {
+      throw new Error("Errore upload");
     }
-  };
+  } catch (error) {
+    console.error("Errore upload:", error);
+    toast({
+      title: "Errore",
+      description: "Impossibile salvare la foto su Drive",
+      variant: "destructive",
+    });
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   // ✅ Altre utility
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
