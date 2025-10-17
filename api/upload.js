@@ -1,4 +1,5 @@
 import { google } from "googleapis";
+import { Readable } from "stream";
 
 export default async function handler(req, res) {
   try {
@@ -11,7 +12,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Dati mancanti" });
     }
 
-    // 🔐 Carica le credenziali del service account
+    // 🔐 Credenziali del service account
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
     const auth = new google.auth.JWT({
       email: credentials.client_email,
@@ -21,11 +22,14 @@ export default async function handler(req, res) {
 
     const drive = google.drive({ version: "v3", auth });
 
-    // 🧩 Rimuove il prefisso data:image/png;base64,
+    // 🧩 Rimuove il prefisso base64
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, "base64");
 
-    // 📁 Upload verso Drive
+    // 🔄 Converte il buffer in uno stream leggibile
+    const stream = Readable.from(buffer);
+
+    // 📁 Upload su Drive
     const fileMetadata = {
       name: filename,
       parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
@@ -33,15 +37,12 @@ export default async function handler(req, res) {
 
     const media = {
       mimeType: "image/png",
-      body: Buffer.from(buffer),
+      body: stream, // ✅ Ora è uno stream leggibile
     };
 
     const response = await drive.files.create({
       requestBody: fileMetadata,
-      media: {
-        mimeType: "image/png",
-        body: buffer, // ✅ Passiamo direttamente il buffer, non una stringa
-      },
+      media,
       fields: "id, name, webViewLink",
     });
 
