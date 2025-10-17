@@ -105,73 +105,78 @@ export default function CameraPage() {
     }
   };
 
-  const startCamera = async () => {
-  try {
-    // Stop eventuale stream precedente
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop());
-    }
-
-    // ⚡ Importantissimo su iOS: chiamare getUserMedia dentro un "user gesture"
-    const constraints = {
-      video: {
-        facingMode: { ideal: "user" },
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    };
-
-    console.log("🎥 Avvio fotocamera con constraints:", constraints);
-
-    // ⚠️ fix per Chrome iOS — richiesta ritardata
-    await new Promise((res) => setTimeout(res, 300));
-
-    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
-
-    if (!videoRef.current) throw new Error("Elemento video mancante");
-
-    const videoElement = videoRef.current;
-    videoElement.srcObject = mediaStream;
-    videoElement.setAttribute("playsinline", "true");
-    videoElement.setAttribute("autoplay", "true");
-    videoElement.setAttribute("muted", "true");
-    videoElement.muted = true;
-
-    // Forza l’avvio esplicito dello stream
-    await videoElement.play().catch((err) => {
-      console.warn("⚠️ video.play() bloccato:", err);
-    });
-
-    setStream(mediaStream);
-    setIsCameraActive(true);
-
-    toast({
-      title: "📸 Fotocamera attiva",
-      description: "Pronta per scattare!",
-    });
-  } catch (error: any) {
-    console.error("❌ Errore accesso fotocamera:", error);
-
-    let message = "Impossibile accedere alla fotocamera.";
-
-    if (error.name === "NotAllowedError") {
-      message = "Permesso negato — prova a ricaricare e consentire di nuovo.";
-    } else if (error.name === "NotReadableError") {
-      message = "Fotocamera già in uso da un'altra app.";
-    } else if (error.name === "NotFoundError") {
-      message = "Nessuna fotocamera rilevata.";
-    }
-
-    toast({
-      title: "Errore fotocamera",
-      description: message,
-      variant: "destructive",
-    });
-
-    // disattiva stato camera
-    setIsCameraActive(false);
+  const startCamera = () => {
+  if (!videoRef.current) {
+    console.error("Elemento video mancante");
+    return;
   }
+
+  const videoElement = videoRef.current;
+
+  // ✅ Fix iOS — imposta attributi PRIMA di aprire lo stream
+  videoElement.setAttribute("playsinline", "true");
+  videoElement.setAttribute("autoplay", "true");
+  videoElement.setAttribute("muted", "true");
+  videoElement.muted = true;
+
+  const constraints = {
+    video: {
+      facingMode: { ideal: "user" },
+      width: { ideal: 1280 },
+      height: { ideal: 720 },
+    },
+    audio: false,
+  };
+
+  console.log("🎥 Tentativo avvio fotocamera...", constraints);
+
+  // ✅ Importante: chiamata diretta dentro l’evento click
+  navigator.mediaDevices
+    .getUserMedia(constraints)
+    .then((mediaStream) => {
+      console.log("✅ Stream ottenuto:", mediaStream);
+      videoElement.srcObject = mediaStream;
+
+      // Forza play immediato nello stesso ciclo
+      const playPromise = videoElement.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("▶️ Riproduzione avviata");
+            setStream(mediaStream);
+            setIsCameraActive(true);
+            toast({
+              title: "📸 Fotocamera attiva",
+              description: "Pronta per scattare!",
+            });
+          })
+          .catch((err) => {
+            console.warn("⚠️ video.play() bloccato:", err);
+          });
+      }
+    })
+    .catch((error) => {
+      console.error("❌ Errore accesso fotocamera:", error);
+
+      let message = "Impossibile accedere alla fotocamera.";
+
+      if (error.name === "NotAllowedError") {
+        message =
+          "Permesso negato — prova a ricaricare e consentire di nuovo.";
+      } else if (error.name === "NotReadableError") {
+        message = "Fotocamera già in uso da un'altra app.";
+      } else if (error.name === "NotFoundError") {
+        message = "Nessuna fotocamera rilevata.";
+      }
+
+      toast({
+        title: "Errore fotocamera",
+        description: message,
+        variant: "destructive",
+      });
+
+      setIsCameraActive(false);
+    });
 };
 
   const capturePhoto = async () => {
