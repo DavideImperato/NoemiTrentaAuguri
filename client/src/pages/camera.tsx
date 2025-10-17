@@ -392,60 +392,22 @@ export default function CameraPage() {
             <Card className="overflow-hidden shadow-2xl border-2" data-testid="card-camera">
               <div className="relative bg-card">
                 {isCameraActive ? (
-                  <div className="relative aspect-[3/4] bg-black">
-                    <video
-  ref={videoRef}
-  autoPlay
-  playsInline
-  muted
-  onClick={() => videoRef.current?.play()} // 👈 Safari richiede un tap per partire
-  className="w-full h-full object-cover bg-black"
-  style={{ minHeight: "300px", maxHeight: "80vh", borderRadius: "8px" }}
-  data-testid="video-camera"
-/>
-
-                    <div className="absolute inset-0 pointer-events-none">
-                      <img
-                        src={frameImage}
-                        alt="Cornice"
-                        className="w-full h-full object-cover opacity-60"
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <div className="aspect-[3/4] flex items-center justify-center bg-gradient-to-br from-secondary/20 to-accent/20">
-                    <div className="text-center space-y-4 p-8">
-                      <Camera className="w-20 h-20 mx-auto text-primary opacity-30" />
-                      <p className="text-muted-foreground">
-                        Premi il pulsante per attivare la fotocamera
-                      </p>
-                    </div>
-                  </div>
-                )}
-
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
-
-              <div className="p-6 space-y-4 bg-card">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  data-testid="input-file"
-                />
-                {isCameraActive ? (
-                  <Button
-                    onClick={capturePhoto}
-                    size="lg"
-                    className="w-full text-lg"
-                    data-testid="button-capture"
-                  >
-                    <Camera className="mr-2 h-5 w-5" />
-                    Scatta la Foto
-                  </Button>
-                ) : (
+  <div className="relative aspect-[3/4] bg-black overflow-hidden rounded-lg">
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full h-full object-cover absolute inset-0 z-0"
+      data-testid="video-camera"
+    />
+    <img
+      src={frameImage}
+      alt="Cornice"
+      className="absolute inset-0 w-full h-full object-contain z-10 pointer-events-none"
+    />
+  </div>
+) : (
                   <div className="space-y-3">
                     <Button
                       onClick={startCamera}
