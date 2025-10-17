@@ -1,66 +1,64 @@
 import { google } from "googleapis";
+import fs from "fs";
 
+// ✅ Configurazione handler API per Vercel
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Metodo non consentito" });
   }
 
   try {
-    // 🔐 Carica le credenziali del service account
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    // ✅ Carica il token OAuth salvato
+    const token = JSON.parse(process.env.GOOGLE_OAUTH_TOKEN_JSON);
+    const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS_JSON);
 
-    const auth = new google.auth.GoogleAuth({
-      credentials,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-    });
+    const { client_id, client_secret, redirect_uris } = credentials.web;
 
-    const drive = google.drive({ version: "v3", auth });
+    // ✅ Inizializza l'OAuth2 client con le tue credenziali
+    const oauth2Client = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      redirect_uris[0]
+    );
+    oauth2Client.setCredentials(token);
 
-    // 📸 Dati inviati dal client
-    const { image, fileName } = req.body;
+    const drive = google.drive({ version: "v3", auth: oauth2Client });
 
-    if (!image || !fileName) {
-      return res.status(400).json({ error: "Dati mancanti: image o fileName" });
+    const { imageData, filename } = req.body;
+
+    if (!imageData) {
+      return res.status(400).json({ error: "Nessuna immagine ricevuta" });
     }
 
-    // 🔄 Converte la stringa base64 in Buffer binario
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-    const imageBuffer = Buffer.from(base64Data, "base64");
+    // ✅ Converte la base64 in buffer
+    const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
 
-    // 📁 Crea il file su Google Drive
+    // ✅ Crea il file su Google Drive
     const fileMetadata = {
-      name: fileName,
-      parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
+      name: filename || `Noemi30_${Date.now()}.png`,
+      parents: ["root"], // puoi sostituire con un ID di cartella se vuoi
     };
 
     const media = {
       mimeType: "image/png",
-      body: BufferToStream(imageBuffer), // 👈 serve come stream
+      body: Buffer.from(buffer),
     };
 
     const response = await drive.files.create({
-      resource: fileMetadata,
+      requestBody: fileMetadata,
       media,
-      fields: "id, name, webViewLink",
+      fields: "id, webViewLink",
     });
 
-    console.log("✅ Upload completato:", response.data);
+    console.log("✅ File caricato:", response.data);
 
     return res.status(200).json({
-      success: true,
-      file: response.data,
+      message: "Foto salvata su Google Drive!",
+      link: response.data.webViewLink,
     });
   } catch (error) {
-    console.error("Errore upload:", error);
+    console.error("❌ Errore upload:", error);
     return res.status(500).json({ error: error.message });
   }
-}
-
-// 🧩 Utility: converte un Buffer in Stream
-import { Readable } from "stream";
-function BufferToStream(buffer) {
-  const readable = new Readable();
-  readable.push(buffer);
-  readable.push(null);
-  return readable;
 }
