@@ -8,17 +8,16 @@ import {
   CheckCircle,
   Upload,
   Heart,
-  FileText,
   ImagePlus,
 } from "lucide-react";
+import { createClient } from "@supabase/supabase-js";
 import frameImage from "@assets/generated_images/Birthday_photo_frame_overlay_53195203.png";
 
-declare global {
-  interface Window {
-    gapi: any;
-    google: any;
-  }
-}
+// 🔗 Inizializza Supabase (usando variabili da .env)
+const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY
+);
 
 export default function CameraPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -30,85 +29,45 @@ export default function CameraPage() {
   const [photoSource, setPhotoSource] = useState<"camera" | "gallery" | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
-  const [isGapiLoaded, setIsGapiLoaded] = useState(false);
-  const [isSignedIn, setIsSignedIn] = useState(false);
   const { toast } = useToast();
 
-  // ✅ Caricamento Google API
-  useEffect(() => {
-    const loadGoogleAPI = () => {
-      const script1 = document.createElement("script");
-      script1.src = "https://apis.google.com/js/api.js";
-      script1.async = true;
-      script1.defer = true;
-      script1.onload = () => {
-        window.gapi.load("client", () => setIsGapiLoaded(true));
-      };
-      document.body.appendChild(script1);
-
-      const script2 = document.createElement("script");
-      script2.src = "https://accounts.google.com/gsi/client";
-      script2.async = true;
-      script2.defer = true;
-      document.body.appendChild(script2);
-    };
-
-    loadGoogleAPI();
-  }, []);
-
-  // ✅ Stop stream su unmount
+  // ✅ Stop fotocamera su unmount
   useEffect(() => {
     return () => {
       if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, [stream]);
 
-  // ✅ Avvio fotocamera (iOS compatibile)
+  // ✅ Avvia la fotocamera (compatibile iPhone)
   const startCamera = () => {
     const videoElement = videoRef.current;
-    if (!videoElement) {
-      console.error("Elemento video non trovato");
-      return;
-    }
+    if (!videoElement) return;
 
     videoElement.setAttribute("playsinline", "true");
     videoElement.setAttribute("autoplay", "true");
     videoElement.setAttribute("muted", "true");
     videoElement.muted = true;
 
-    const constraints = {
-      video: {
-        facingMode: "user",
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-      },
-      audio: false,
-    };
-
     navigator.mediaDevices
-      .getUserMedia(constraints)
+      .getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      })
       .then((mediaStream) => {
         videoElement.srcObject = mediaStream;
         videoElement.play().catch(() => {});
         setStream(mediaStream);
         setIsCameraActive(true);
-        toast({
-          title: "📸 Fotocamera attiva",
-          description: "Pronta per scattare!",
-        });
+        toast({ title: "📸 Fotocamera attiva", description: "Pronta per scattare!" });
       })
       .catch((error) => {
-        console.error("❌ Errore accesso fotocamera:", error);
+        console.error("❌ Errore fotocamera:", error);
         let msg = "Impossibile accedere alla fotocamera.";
         if (error.name === "NotAllowedError")
           msg = "Accesso negato. Verifica i permessi.";
         else if (error.name === "NotFoundError")
           msg = "Nessuna fotocamera trovata.";
-        toast({
-          title: "Errore fotocamera",
-          description: msg,
-          variant: "destructive",
-        });
+        toast({ title: "Errore fotocamera", description: msg, variant: "destructive" });
       });
   };
 
@@ -122,7 +81,6 @@ export default function CameraPage() {
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
-
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const original = canvas.toDataURL("image/png");
@@ -137,108 +95,56 @@ export default function CameraPage() {
       setCapturedPhoto(photo);
       if (stream) stream.getTracks().forEach((t) => t.stop());
       setIsCameraActive(false);
-      toast({
-        title: "✅ Foto scattata",
-        description: "Cornice applicata con successo",
-      });
+      toast({ title: "✅ Foto scattata", description: "Cornice applicata!" });
     };
   };
 
-  // ✅ Upload su Drive
-  const initializeGoogleDrive = async () => {
-    if (!isGapiLoaded) {
+  // ✅ Upload diretto su Supabase
+  const uploadToSupabase = async () => {
+    if (!capturedPhoto) {
       toast({
-        title: "⏳ Inizializzazione...",
-        description: "Google Drive API in caricamento...",
+        title: "Errore",
+        description: "Nessuna foto trovata da caricare",
+        variant: "destructive",
       });
       return;
     }
 
+    setIsLoading(true);
     try {
-      await window.gapi.client.init({
-        apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
-        discoveryDocs: [
-          "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
-        ],
-      });
+      const blob = await (await fetch(capturedPhoto)).blob();
+      const fileName = `Noemi30_${Date.now()}.jpg`;
 
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
-        scope: "https://www.googleapis.com/auth/drive.file",
-        callback: (resp: any) => {
-          if (resp.error) {
-            toast({
-              title: "Errore autenticazione",
-              description: resp.error,
-              variant: "destructive",
-            });
-          } else {
-            setIsSignedIn(true);
-            toast({
-              title: "✅ Connesso a Google Drive",
-              description: "Ora puoi salvare le foto!",
-            });
-          }
-        },
-      });
+      const { error } = await supabase.storage
+        .from("noemi30")
+        .upload(fileName, blob, {
+          contentType: "image/jpeg",
+          upsert: true,
+        });
 
-      tokenClient.requestAccessToken();
-    } catch (err) {
-      console.error(err);
+      if (error) throw error;
+
+      const publicUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/noemi30/${fileName}`;
+
       toast({
-        title: "Errore Google Drive",
-        description: "Controlla le credenziali API",
+        title: "✅ Foto salvata!",
+        description: "Caricata correttamente su Supabase.",
+      });
+
+      console.log("📤 Upload riuscito:", publicUrl);
+    } catch (error) {
+      console.error("❌ Errore upload:", error);
+      toast({
+        title: "Errore upload",
+        description: "Impossibile salvare la foto.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false);
     }
   };
 
-const uploadToSupabase = async () => {
-  if (!capturedPhoto) {
-    toast({
-      title: "Errore",
-      description: "Nessuna foto trovata da caricare",
-      variant: "destructive",
-    });
-    return;
-  }
-
-  setIsLoading(true);
-
-  try {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const blob = await (await fetch(capturedPhoto)).blob();
-
-    const formData = new FormData();
-    formData.append("file", blob, `Noemi30_${timestamp}.jpg`);
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData, // ⚡ niente Content-Type manuale!
-    });
-
-    if (!response.ok) throw new Error("Errore upload");
-
-    const data = await response.json();
-    toast({
-      title: "✅ Foto salvata!",
-      description: `Immagine caricata correttamente.`,
-    });
-
-    console.log("📤 Upload completato:", data);
-  } catch (error) {
-    console.error("Errore upload:", error);
-    toast({
-      title: "Errore salvataggio",
-      description: "Impossibile salvare la foto (verifica connessione o permessi)",
-      variant: "destructive",
-    });
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-  // ✅ Altre utility
+  // ✅ Gestione immagini da galleria
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -286,6 +192,7 @@ const uploadToSupabase = async () => {
     link.download = `Noemi30_${new Date().toISOString()}.png`;
     link.click();
   };
+
   const retakePhoto = () => {
     setCapturedPhoto(null);
     setOriginalPhoto(null);
@@ -382,9 +289,11 @@ const uploadToSupabase = async () => {
                   className="w-full text-lg"
                   disabled={isLoading}
                 >
-                  {isLoading ? "Caricamento..." : <>
-                    <Upload className="mr-2 h-5 w-5" /> Salva ricordo
-                  </>}
+                  {isLoading ? "Caricamento..." : (
+                    <>
+                      <Upload className="mr-2 h-5 w-5" /> Salva ricordo
+                    </>
+                  )}
                 </Button>
                 <div className="grid grid-cols-2 gap-3">
                   <Button onClick={downloadPhoto} variant="outline" size="lg">

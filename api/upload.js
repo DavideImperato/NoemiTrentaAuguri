@@ -1,17 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
+import Busboy from "busboy";
 
-// ✅ Inizializza Supabase
+export const config = {
+  api: {
+    bodyParser: false, // Disattiva parsing automatico
+  },
+  runtime: "nodejs", // ✅ Forza runtime Node.js (non Edge)
+};
+
+// Inizializza Supabase
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
-
-// ✅ Gestione POST con FormData
-export const config = {
-  api: {
-    bodyParser: false, // ❗ Disabilita il body parser JSON di default
-  },
-};
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -19,46 +20,40 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔍 Legge il corpo della richiesta come FormData
-    const buffers = [];
-    for await (const chunk of req) {
-      buffers.push(chunk);
-    }
+    const busboy = Busboy({ headers: req.headers });
+    const fileBuffers = [];
 
-    const data = Buffer.concat(buffers);
-    const boundary = req.headers["content-type"].split("boundary=")[1];
-    const parts = data.toString().split(`--${boundary}`);
+    let filename = `noemi30_${Date.now()}.jpg`;
 
-    // 🔎 Cerca il file nel FormData
-    const filePart = parts.find((part) => part.includes("filename="));
-    if (!filePart) {
-      return res.status(400).json({ error: "Nessun file trovato" });
-    }
+    // 🔍 Cattura file
+    busboy.on("file", (fieldname, file, info) => {
+      filename = info.filename || filename;
+      file.on("data", (data) => fileBuffers.push(data));
+    });
 
-    const match = filePart.match(/filename="(.+)"/);
-    const filename = match ? match[1] : `foto-${Date.now()}.jpg`;
+    // ✅ Quando finisce di leggere
+    busboy.on("finish", async () => {
+      const fileBuffer = Buffer.concat(fileBuffers);
 
-    // Rimuove header e prende solo il contenuto binario
-    const fileContent = filePart.split("\r\n\r\n")[1];
-    const end = fileContent.lastIndexOf("\r\n");
-    const fileBuffer = Buffer.from(fileContent.slice(0, end), "binary");
+      console.log(`📸 Ricevuto file: ${filename} (${fileBuffer.length} bytes)`);
 
-    // 📤 Upload su Supabase Storage
-    const { data: uploaded, error } = await supabase.storage
-      .from("noemi30") // <-- usa il nome esatto del tuo bucket
-      .upload(filename, fileBuffer, {
-        contentType: "image/jpeg",
-        upsert: true,
-      });
+      const { data, error } = await supabase.storage
+        .from("noemi30")
+        .upload(filename, fileBuffer, {
+          contentType: "image/jpeg",
+          upsert: true,
+        });
 
-    if (error) {
-      console.error("❌ Errore upload:", error);
-      return res.status(500).json({ error: error.message });
-    }
+      if (error) {
+        console.error("❌ Errore Supabase:", error);
+        return res.status(500).json({ error: error.message });
+      }
 
-    const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/noemi30/${filename}`;
+      const publicUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/noemi30/${filename}`;
+      return res.status(200).json({ url: publicUrl });
+    });
 
-    return res.status(200).json({ message: "✅ Upload completato", url: publicUrl });
+    req.pipe(busboy);
   } catch (err) {
     console.error("❌ Errore generale:", err);
     return res.status(500).json({ error: err.message });
