@@ -193,7 +193,7 @@ export default function CameraPage() {
     }
   };
 
-  const uploadToGoogleDrive = async () => {
+const uploadToSupabase = async () => {
   if (!capturedPhoto) {
     toast({
       title: "Errore",
@@ -207,33 +207,30 @@ export default function CameraPage() {
 
   try {
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `Noemi30_${timestamp}.png`;
+    const blob = await (await fetch(capturedPhoto)).blob();
+
+    const formData = new FormData();
+    formData.append("file", blob, `Noemi30_${timestamp}.jpg`);
 
     const response = await fetch("/api/upload", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageData: capturedPhoto, // base64 dell’immagine
-        filename,
-      }),
+      body: formData, // ⚡ niente Content-Type manuale!
     });
+
+    if (!response.ok) throw new Error("Errore upload");
 
     const data = await response.json();
-
-    if (!response.ok) throw new Error(data.error || "Errore upload");
-
     toast({
-      title: "✅ Foto caricata con successo!"
+      title: "✅ Foto salvata!",
+      description: `Immagine caricata correttamente.`,
     });
 
-    // Copia link negli appunti (comodo per test)
-    await navigator.clipboard.writeText(data.link);
-    console.log("✅ URL immagine:", data.link);
+    console.log("📤 Upload completato:", data);
   } catch (error) {
     console.error("Errore upload:", error);
     toast({
       title: "Errore salvataggio",
-      description: "Impossibile caricare la foto",
+      description: "Impossibile salvare la foto (verifica connessione o permessi)",
       variant: "destructive",
     });
   } finally {
@@ -380,7 +377,7 @@ export default function CameraPage() {
 
               <div className="p-6 space-y-3 bg-card">
                 <Button
-                  onClick={uploadToGoogleDrive}
+                  onClick={uploadToSupabase}
                   size="lg"
                   className="w-full text-lg"
                   disabled={isLoading}
