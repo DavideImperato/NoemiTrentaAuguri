@@ -34,7 +34,7 @@ export default function CameraPage() {
   const [isSignedIn, setIsSignedIn] = useState(false);
   const { toast } = useToast();
 
-  // --- Google API load ---
+  // ✅ Caricamento Google API
   useEffect(() => {
     const loadGoogleAPI = () => {
       const script1 = document.createElement("script");
@@ -42,9 +42,7 @@ export default function CameraPage() {
       script1.async = true;
       script1.defer = true;
       script1.onload = () => {
-        window.gapi.load("client", () => {
-          setIsGapiLoaded(true);
-        });
+        window.gapi.load("client", () => setIsGapiLoaded(true));
       };
       document.body.appendChild(script1);
 
@@ -58,14 +56,14 @@ export default function CameraPage() {
     loadGoogleAPI();
   }, []);
 
-  // --- stop stream on unmount ---
+  // ✅ Stop stream su unmount
   useEffect(() => {
     return () => {
-      if (stream) stream.getTracks().forEach((track) => track.stop());
+      if (stream) stream.getTracks().forEach((t) => t.stop());
     };
   }, [stream]);
 
-  // --- Start camera (iOS safe version) ---
+  // ✅ Avvio fotocamera (iOS compatibile)
   const startCamera = () => {
     const videoElement = videoRef.current;
     if (!videoElement) {
@@ -73,7 +71,6 @@ export default function CameraPage() {
       return;
     }
 
-    // impostazioni essenziali per iOS
     videoElement.setAttribute("playsinline", "true");
     videoElement.setAttribute("autoplay", "true");
     videoElement.setAttribute("muted", "true");
@@ -88,21 +85,11 @@ export default function CameraPage() {
       audio: false,
     };
 
-    console.log("🎥 Tentativo accesso fotocamera...");
     navigator.mediaDevices
       .getUserMedia(constraints)
       .then((mediaStream) => {
-        console.log("✅ Stream ottenuto");
         videoElement.srcObject = mediaStream;
-
-        // forza il play immediato su iOS
-        const playPromise = videoElement.play();
-        if (playPromise !== undefined) {
-          playPromise.catch((err) => {
-            console.warn("⚠️ video.play() fallito:", err);
-          });
-        }
-
+        videoElement.play().catch(() => {});
         setStream(mediaStream);
         setIsCameraActive(true);
         toast({
@@ -112,126 +99,206 @@ export default function CameraPage() {
       })
       .catch((error) => {
         console.error("❌ Errore accesso fotocamera:", error);
-        let message = "Impossibile accedere alla fotocamera.";
+        let msg = "Impossibile accedere alla fotocamera.";
         if (error.name === "NotAllowedError")
-          message = "Accesso negato. Verifica i permessi.";
-        else if (error.name === "NotReadableError")
-          message = "La fotocamera è in uso da un'altra app.";
+          msg = "Accesso negato. Verifica i permessi.";
         else if (error.name === "NotFoundError")
-          message = "Nessuna fotocamera rilevata.";
-
+          msg = "Nessuna fotocamera trovata.";
         toast({
           title: "Errore fotocamera",
-          description: message,
+          description: msg,
           variant: "destructive",
         });
       });
   };
 
-  // --- Capture photo ---
-  const capturePhoto = async () => {
+  // ✅ Scatta foto
+  const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
-
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const context = canvas.getContext("2d");
-    if (!context) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
 
-    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const originalPhotoDataUrl = canvas.toDataURL("image/png");
-    setOriginalPhoto(originalPhotoDataUrl);
+    const original = canvas.toDataURL("image/png");
+    setOriginalPhoto(original);
     setPhotoSource("camera");
 
     const frame = new Image();
     frame.src = frameImage;
     frame.onload = () => {
-      context.drawImage(frame, 0, 0, canvas.width, canvas.height);
-      const photoDataUrl = canvas.toDataURL("image/png");
-      setCapturedPhoto(photoDataUrl);
-      if (stream) stream.getTracks().forEach((track) => track.stop());
+      ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+      const photo = canvas.toDataURL("image/png");
+      setCapturedPhoto(photo);
+      if (stream) stream.getTracks().forEach((t) => t.stop());
       setIsCameraActive(false);
       toast({
-        title: "Foto scattata!",
-        description: "La cornice è stata applicata",
+        title: "✅ Foto scattata",
+        description: "Cornice applicata con successo",
       });
     };
   };
 
-  // --- File upload ---
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  // ✅ Upload su Drive
+  const initializeGoogleDrive = async () => {
+    if (!isGapiLoaded) {
+      toast({
+        title: "⏳ Inizializzazione...",
+        description: "Google Drive API in caricamento...",
+      });
+      return;
+    }
+
+    try {
+      await window.gapi.client.init({
+        apiKey: import.meta.env.VITE_GOOGLE_API_KEY,
+        discoveryDocs: [
+          "https://www.googleapis.com/discovery/v1/apis/drive/v3/rest",
+        ],
+      });
+
+      const tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID,
+        scope: "https://www.googleapis.com/auth/drive.file",
+        callback: (resp: any) => {
+          if (resp.error) {
+            toast({
+              title: "Errore autenticazione",
+              description: resp.error,
+              variant: "destructive",
+            });
+          } else {
+            setIsSignedIn(true);
+            toast({
+              title: "✅ Connesso a Google Drive",
+              description: "Ora puoi salvare le foto!",
+            });
+          }
+        },
+      });
+
+      tokenClient.requestAccessToken();
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Errore Google Drive",
+        description: "Controlla le credenziali API",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const uploadToGoogleDrive = async () => {
+    if (!capturedPhoto || !originalPhoto) return;
+    if (!isSignedIn) {
+      await initializeGoogleDrive();
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const filename = `Noemi30_${timestamp}_cornice.png`;
+      const blob = await fetch(capturedPhoto).then((r) => r.blob());
+
+      const metadata = { name: filename, mimeType: "image/png" };
+      const form = new FormData();
+      form.append(
+        "metadata",
+        new Blob([JSON.stringify(metadata)], { type: "application/json" })
+      );
+      form.append("file", blob);
+
+      const uploadUrl =
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+      const token = window.gapi.client.getToken().access_token;
+
+      const res = await fetch(uploadUrl, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+
+      if (res.ok) {
+        toast({
+          title: "🎉 Foto salvata su Google Drive!",
+          description: filename,
+        });
+        setCapturedPhoto(null);
+        setOriginalPhoto(null);
+      } else throw new Error("Upload fallito");
+    } catch (err) {
+      console.error(err);
+      toast({
+        title: "Errore salvataggio",
+        description: "Non è stato possibile caricare su Drive",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ✅ Altre utility
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast({
         title: "Errore",
-        description: "Seleziona un file immagine valido",
+        description: "Seleziona un'immagine valida",
         variant: "destructive",
       });
       return;
     }
 
     const reader = new FileReader();
-    reader.onload = (e) => {
-      const imageDataUrl = e.target?.result as string;
-      setOriginalPhoto(imageDataUrl);
-      setPhotoSource("gallery");
-
+    reader.onload = (ev) => {
       const img = new Image();
       img.onload = () => {
-        if (!canvasRef.current) return;
         const canvas = canvasRef.current;
-        const context = canvas.getContext("2d");
-        if (!context) return;
-
+        const ctx = canvas?.getContext("2d");
+        if (!ctx || !canvas) return;
         canvas.width = img.width;
         canvas.height = img.height;
-        context.drawImage(img, 0, 0);
+        ctx.drawImage(img, 0, 0);
 
         const frame = new Image();
         frame.src = frameImage;
         frame.onload = () => {
-          context.drawImage(frame, 0, 0, canvas.width, canvas.height);
-          const photoWithFrame = canvas.toDataURL("image/png");
-          setCapturedPhoto(photoWithFrame);
-          if (fileInputRef.current) fileInputRef.current.value = "";
+          ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
+          setCapturedPhoto(canvas.toDataURL("image/png"));
           toast({
-            title: "Foto caricata!",
-            description: "Cornice applicata con successo",
+            title: "✅ Foto caricata",
+            description: "Cornice applicata correttamente",
           });
         };
       };
-      img.src = imageDataUrl;
+      img.src = ev.target?.result as string;
     };
     reader.readAsDataURL(file);
   };
 
   const openGallery = () => fileInputRef.current?.click();
-
-  // --- Download ---
   const downloadPhoto = () => {
     if (!capturedPhoto) return;
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const link = document.createElement("a");
     link.href = capturedPhoto;
-    link.download = `Noemi30_${timestamp}.png`;
+    link.download = `Noemi30_${new Date().toISOString()}.png`;
     link.click();
-    toast({
-      title: "Download completato",
-      description: "Foto salvata sul dispositivo",
-    });
   };
-
   const retakePhoto = () => {
     setCapturedPhoto(null);
     setOriginalPhoto(null);
     if (photoSource === "camera") startCamera();
-    setPhotoSource(null);
   };
 
+  // ✅ UI
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-secondary via-background to-accent/30">
       <main className="flex-1 flex flex-col items-center justify-center p-4 md:p-8 relative z-10">
@@ -248,7 +315,6 @@ export default function CameraPage() {
           {!capturedPhoto ? (
             <Card className="overflow-hidden shadow-2xl border-2">
               <div className="relative aspect-[3/4] bg-black overflow-hidden">
-                {/* VIDEO SEMPRE PRESENTE */}
                 <video
                   ref={videoRef}
                   autoPlay
@@ -258,7 +324,6 @@ export default function CameraPage() {
                     isCameraActive ? "opacity-100" : "opacity-0"
                   }`}
                 />
-                {/* CORNICE */}
                 <div className="absolute inset-0 pointer-events-none">
                   <img
                     src={frameImage}
@@ -266,7 +331,6 @@ export default function CameraPage() {
                     className="w-full h-full object-cover opacity-60"
                   />
                 </div>
-                {/* OVERLAY */}
                 {!isCameraActive && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-secondary/20 to-accent/20 z-10">
                     <Camera className="w-20 h-20 text-primary opacity-30" />
@@ -288,18 +352,12 @@ export default function CameraPage() {
                 />
                 {isCameraActive ? (
                   <Button onClick={capturePhoto} size="lg" className="w-full text-lg">
-                    <Camera className="mr-2 h-5 w-5" />
-                    Scatta la Foto
+                    <Camera className="mr-2 h-5 w-5" /> Scatta la Foto
                   </Button>
                 ) : (
                   <div className="space-y-3">
-                    <Button
-                      onClick={startCamera}
-                      size="lg"
-                      className="w-full text-lg"
-                    >
-                      <Camera className="mr-2 h-5 w-5" />
-                      Attiva Fotocamera
+                    <Button onClick={startCamera} size="lg" className="w-full text-lg">
+                      <Camera className="mr-2 h-5 w-5" /> Attiva Fotocamera
                     </Button>
                     <Button
                       onClick={openGallery}
@@ -307,8 +365,7 @@ export default function CameraPage() {
                       variant="outline"
                       className="w-full text-lg"
                     >
-                      <ImagePlus className="mr-2 h-5 w-5" />
-                      Scegli dalla Galleria
+                      <ImagePlus className="mr-2 h-5 w-5" /> Scegli dalla Galleria
                     </Button>
                   </div>
                 )}
@@ -318,24 +375,31 @@ export default function CameraPage() {
             <Card className="overflow-hidden shadow-2xl border-2">
               <div className="relative">
                 <img src={capturedPhoto} alt="Foto scattata" className="w-full h-auto" />
-                <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                <div className="absolute top-4 right-4 bg-green-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2">
                   <CheckCircle className="w-5 h-5" />
                   <span className="font-medium">Foto pronta!</span>
                 </div>
               </div>
 
               <div className="p-6 space-y-3 bg-card">
-                <Button onClick={downloadPhoto} size="lg" className="w-full text-lg">
-                  <Download className="mr-2 h-5 w-5" /> Download
-                </Button>
                 <Button
-                  onClick={retakePhoto}
-                  variant="outline"
+                  onClick={uploadToGoogleDrive}
                   size="lg"
                   className="w-full text-lg"
+                  disabled={isLoading}
                 >
-                  <Camera className="mr-2 h-5 w-5" /> Rifai
+                  {isLoading ? "Caricamento..." : <>
+                    <Upload className="mr-2 h-5 w-5" /> Salva su Google Drive
+                  </>}
                 </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button onClick={downloadPhoto} variant="outline" size="lg">
+                    <Download className="mr-2 h-5 w-5" /> Download
+                  </Button>
+                  <Button onClick={retakePhoto} variant="outline" size="lg">
+                    <Camera className="mr-2 h-5 w-5" /> Rifai
+                  </Button>
+                </div>
               </div>
             </Card>
           )}
@@ -344,7 +408,9 @@ export default function CameraPage() {
 
       <footer className="py-6 text-center bg-secondary/30 backdrop-blur-sm border-t">
         <div className="flex items-center justify-center gap-2">
-          <p className="text-sm text-foreground/80 font-light">Creato con amore per Noemi</p>
+          <p className="text-sm text-foreground/80 font-light">
+            Creato con amore per Noemi
+          </p>
           <Heart className="w-4 h-4 text-primary fill-primary" />
           <p className="text-sm text-foreground/80 font-light">da Davide</p>
         </div>
