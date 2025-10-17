@@ -206,7 +206,7 @@ export default function CameraPage() {
       const filename = `Noemi30_${timestamp}_cornice.png`;
       const blob = await fetch(capturedPhoto).then((r) => r.blob());
 
-      const metadata = { name: filename, mimeType: "image/png" };
+      const metadata = { name: filename, mimeType: "image/png",parents: ["1p0ygPJDf6UC7sJg1Rok9xxvbAJ0d0STU"] };
       const form = new FormData();
       form.append(
         "metadata",
