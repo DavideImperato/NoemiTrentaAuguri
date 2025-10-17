@@ -218,21 +218,22 @@ export default function CameraPage() {
       }),
     });
 
-    if (!response.ok) throw new Error("Errore upload");
-
     const data = await response.json();
 
+    if (!response.ok) throw new Error(data.error || "Errore upload");
+
     toast({
-      title: "✅ Foto salvata su Google Drive!",
-      description: `Apri qui: ${data.link}`,
+      title: "✅ Foto caricata con successo!"
     });
 
-    console.log("📤 Upload completato:", data);
+    // Copia link negli appunti (comodo per test)
+    await navigator.clipboard.writeText(data.link);
+    console.log("✅ URL immagine:", data.link);
   } catch (error) {
     console.error("Errore upload:", error);
     toast({
       title: "Errore salvataggio",
-      description: "Impossibile salvare la foto su Google Drive",
+      description: "Impossibile caricare la foto",
       variant: "destructive",
     });
   } finally {
@@ -385,7 +386,7 @@ export default function CameraPage() {
                   disabled={isLoading}
                 >
                   {isLoading ? "Caricamento..." : <>
-                    <Upload className="mr-2 h-5 w-5" /> Salva su Google Drive
+                    <Upload className="mr-2 h-5 w-5" /> Salva ricordo
                   </>}
                 </Button>
                 <div className="grid grid-cols-2 gap-3">
