@@ -106,39 +106,58 @@ export default function CameraPage() {
   };
 
   const startCamera = async () => {
-  // Evita errori su SSR (Vercel)
-  if (typeof navigator === "undefined" || !navigator.mediaDevices) {
-    console.warn("Fotocamera non disponibile in questo ambiente");
-    return;
-  }
-
   try {
-    const mediaStream = await navigator.mediaDevices.getUserMedia({
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      toast({
+        title: "Fotocamera non supportata",
+        description:
+          "Questo dispositivo o browser non supporta l'accesso alla fotocamera.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const constraints = {
       video: {
-        facingMode: "user", // usa "environment" per fotocamera posteriore
+        facingMode: { ideal: "user" }, // usa "environment" per quella posteriore
         width: { ideal: 1280 },
-        height: { ideal: 1280 },
+        height: { ideal: 720 },
       },
       audio: false,
-    });
+    };
+
+    const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
 
     if (videoRef.current) {
       videoRef.current.srcObject = mediaStream;
-      await videoRef.current.play(); // 👈 forza l'avvio (necessario su Safari / HTTPS)
-      setStream(mediaStream);
-      setIsCameraActive(true);
+
+      // 👇 nuovo fix: forza la riproduzione anche su Safari e Chrome mobile
+      const playPromise = videoRef.current.play();
+
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            console.log("Video avviato correttamente");
+          })
+          .catch((err) => {
+            console.warn("Autoplay bloccato, serve click manuale:", err);
+          });
+      }
     }
 
+    setStream(mediaStream);
+    setIsCameraActive(true);
+
     toast({
-      title: "Fotocamera attiva",
-      description: "Pronta per scattare la foto!",
+      title: "Fotocamera attiva!",
+      description: "Puoi scattare la foto appena vedi il video.",
     });
   } catch (error) {
     console.error("Errore accesso fotocamera:", error);
     toast({
       title: "Errore fotocamera",
       description:
-        "Impossibile accedere alla fotocamera. Verifica i permessi.",
+        "Verifica i permessi e che il sito sia aperto in HTTPS (non dentro app come Instagram).",
       variant: "destructive",
     });
   }
@@ -379,10 +398,12 @@ export default function CameraPage() {
   autoPlay
   playsInline
   muted
+  onClick={() => videoRef.current?.play()} // 👈 Safari richiede un tap per partire
   className="w-full h-full object-cover bg-black"
-  style={{ minHeight: "300px" }} // 👈 evita schermo nero su mobile
+  style={{ minHeight: "300px", maxHeight: "80vh", borderRadius: "8px" }}
   data-testid="video-camera"
 />
+
                     <div className="absolute inset-0 pointer-events-none">
                       <img
                         src={frameImage}
