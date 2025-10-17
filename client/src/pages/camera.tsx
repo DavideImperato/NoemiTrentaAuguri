@@ -239,7 +239,6 @@ export default function CameraPage() {
     setIsLoading(false);
   }
 };
-
   // ✅ Altre utility
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
