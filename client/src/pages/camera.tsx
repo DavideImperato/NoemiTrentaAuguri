@@ -106,36 +106,43 @@ export default function CameraPage() {
   };
 
   const startCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 1280 },
-        },
-        audio: false,
-      });
+  // Evita errori su SSR (Vercel)
+  if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+    console.warn("Fotocamera non disponibile in questo ambiente");
+    return;
+  }
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        setStream(mediaStream);
-        setIsCameraActive(true);
-      }
+  try {
+    const mediaStream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "user", // usa "environment" per fotocamera posteriore
+        width: { ideal: 1280 },
+        height: { ideal: 1280 },
+      },
+      audio: false,
+    });
 
-      toast({
-        title: "Fotocamera attiva",
-        description: "Pronta per scattare la foto!",
-      });
-    } catch (error) {
-      console.error("Errore accesso fotocamera:", error);
-      toast({
-        title: "Errore fotocamera",
-        description:
-          "Impossibile accedere alla fotocamera. Verifica i permessi.",
-        variant: "destructive",
-      });
+    if (videoRef.current) {
+      videoRef.current.srcObject = mediaStream;
+      await videoRef.current.play(); // 👈 forza l'avvio (necessario su Safari / HTTPS)
+      setStream(mediaStream);
+      setIsCameraActive(true);
     }
-  };
+
+    toast({
+      title: "Fotocamera attiva",
+      description: "Pronta per scattare la foto!",
+    });
+  } catch (error) {
+    console.error("Errore accesso fotocamera:", error);
+    toast({
+      title: "Errore fotocamera",
+      description:
+        "Impossibile accedere alla fotocamera. Verifica i permessi.",
+      variant: "destructive",
+    });
+  }
+};
 
   const capturePhoto = async () => {
     if (!videoRef.current || !canvasRef.current) return;
@@ -368,13 +375,14 @@ export default function CameraPage() {
                 {isCameraActive ? (
                   <div className="relative aspect-[3/4] bg-black">
                     <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover"
-                      data-testid="video-camera"
-                    />
+  ref={videoRef}
+  autoPlay
+  playsInline
+  muted
+  className="w-full h-full object-cover bg-black"
+  style={{ minHeight: "300px" }} // 👈 evita schermo nero su mobile
+  data-testid="video-camera"
+/>
                     <div className="absolute inset-0 pointer-events-none">
                       <img
                         src={frameImage}
