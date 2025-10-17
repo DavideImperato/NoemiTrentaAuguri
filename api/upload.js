@@ -12,24 +12,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Dati mancanti" });
     }
 
-    // 🔐 Credenziali del service account
-    const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
-    const auth = new google.auth.JWT({
-      email: credentials.client_email,
-      key: credentials.private_key,
-      scopes: ["https://www.googleapis.com/auth/drive.file"],
-    });
+    // 🔐 Carica le credenziali OAuth (dal tuo account)
+    const credentials = JSON.parse(process.env.GOOGLE_OAUTH_CREDENTIALS);
+    const token = JSON.parse(process.env.GOOGLE_OAUTH_TOKEN);
 
-    const drive = google.drive({ version: "v3", auth });
+    const { client_secret, client_id, redirect_uris } = credentials.web;
+    const oAuth2Client = new google.auth.OAuth2(
+      client_id,
+      client_secret,
+      redirect_uris[0]
+    );
+    oAuth2Client.setCredentials(token);
 
-    // 🧩 Rimuove il prefisso base64
+    const drive = google.drive({ version: "v3", auth: oAuth2Client });
+
+    // 📸 Decodifica l’immagine base64
     const base64Data = imageData.replace(/^data:image\/\w+;base64,/, "");
     const buffer = Buffer.from(base64Data, "base64");
-
-    // 🔄 Converte il buffer in uno stream leggibile
     const stream = Readable.from(buffer);
 
-    // 📁 Upload su Drive
+    // 📁 Metadati file
     const fileMetadata = {
       name: filename,
       parents: [process.env.GOOGLE_DRIVE_FOLDER_ID],
@@ -37,25 +39,29 @@ export default async function handler(req, res) {
 
     const media = {
       mimeType: "image/png",
-      body: stream, // ✅ Ora è uno stream leggibile
+      body: stream,
     };
 
-    const response = await drive.files.create({
+    // 📤 Upload file
+    const file = await drive.files.create({
       requestBody: fileMetadata,
       media,
       fields: "id, name, webViewLink",
     });
 
-    const file = response.data;
-    console.log("✅ Upload completato:", file);
+    // 🔓 Rende la foto accessibile pubblicamente
+    await drive.permissions.create({
+      fileId: file.data.id,
+      requestBody: { role: "reader", type: "anyone" },
+    });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
-      link: file.webViewLink,
-      id: file.id,
+      link: file.data.webViewLink,
+      id: file.data.id,
     });
   } catch (error) {
     console.error("❌ Errore upload:", error);
-    return res.status(500).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
 }
