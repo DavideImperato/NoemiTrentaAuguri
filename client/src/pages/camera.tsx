@@ -256,43 +256,55 @@ const uploadToSupabase = async () => {
 
   // ✅ Altre utility
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({
-        title: "Errore",
-        description: "Seleziona un'immagine valida",
-        variant: "destructive",
-      });
-      return;
-    }
+  const file = e.target.files?.[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        if (!ctx || !canvas) return;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        ctx.drawImage(img, 0, 0);
+  if (!file.type.startsWith("image/")) {
+    toast({
+      title: "Errore",
+      description: "Seleziona un'immagine valida",
+      variant: "destructive",
+    });
+    return;
+  }
 
-        const frame = new Image();
-        frame.src = frameImage;
-        frame.onload = () => {
-          ctx.drawImage(frame, 0, 0, canvas.width, canvas.height);
-          setCapturedPhoto(canvas.toDataURL("image/png"));
-          toast({
-            title: "✅ Foto caricata",
-            description: "Cornice applicata correttamente",
-          });
-        };
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const maxWidth = 1280; // ✅ limite dimensione
+      const scale = Math.min(1, maxWidth / img.width);
+      const width = img.width * scale;
+      const height = img.height * scale;
+
+      canvas.width = width;
+      canvas.height = height;
+
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // ✅ Applica la cornice
+      const frame = new Image();
+      frame.src = frameImage;
+      frame.onload = () => {
+        ctx.drawImage(frame, 0, 0, width, height);
+
+        // ✅ Converte in JPEG qualità 0.8 (molto più leggero)
+        const compressedData = canvas.toDataURL("image/jpeg", 0.8);
+        setCapturedPhoto(compressedData);
+
+        toast({
+          title: "✅ Foto caricata e compressa",
+          description: "Immagine ottimizzata per l'upload",
+        });
       };
-      img.src = ev.target?.result as string;
     };
-    reader.readAsDataURL(file);
+    img.src = ev.target?.result as string;
   };
+  reader.readAsDataURL(file);
+};
 
   const openGallery = () => fileInputRef.current?.click();
   const downloadPhoto = () => {
